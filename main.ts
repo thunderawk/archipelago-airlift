@@ -8,7 +8,7 @@
 //
 // Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output.
 
-import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -17,9 +17,18 @@ const repoRoot = fileURLToPath(new URL('.', import.meta.url));
 const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 // Start from a clean output directory so a stale file can never leak into
-// a run: the two grader runs must agree byte for byte.
-rmSync(outDir, { recursive: true, force: true });
+// a run: the two grader runs must agree byte for byte. Clear only the
+// directory's CONTENTS, never the directory itself — in the grader
+// /output is a mounted volume, and removing the mount point fails with
+// EBUSY (exit 1, round 1 rejected on run_completes). Verified 27 Nov:
+// the old rmSync(outDir) exited 1 on a tmpfs mount point, the new code
+// exits 0 on the same setup; grader-like runs (read-only copy, user
+// nobody, env -i, CWD=/) pass twice byte-identical, and planted stale
+// files are cleared. The kit starter never removes the output dir either.
 mkdirSync(outDir, { recursive: true });
+for (const entry of readdirSync(outDir)) {
+  rmSync(join(outDir, entry), { recursive: true, force: true });
+}
 
 cpSync(join(repoRoot, 'game'), join(outDir, 'game'), { recursive: true });
 
